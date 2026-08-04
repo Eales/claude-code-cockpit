@@ -1,209 +1,217 @@
+**English** | [Polski](README.pl.md)
+
 # claude-code-cockpit
 
-Plugin do Claude Code: czytelny statusline z limitami 5h/7d i stanem gita oraz
-auto-wznawianie sesji po odnowieniu limitu.
+A Claude Code plugin: a readable statusline with 5h/7d rate limits and git state,
+plus automatic session resume once your limit renews.
 
-[![Licencja: MIT](https://img.shields.io/badge/Licencja-MIT-green.svg)](LICENSE)
-![Wersja](https://img.shields.io/badge/wersja-0.2.0-blue.svg)
-![Platforma](https://img.shields.io/badge/statusline-wieloplatformowy-lightgrey.svg)
-![Hook](https://img.shields.io/badge/auto--wznawianie-Windows%20%2F%20pwsh-lightgrey.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)
+![Platform](https://img.shields.io/badge/statusline-cross--platform-lightgrey.svg)
+![Hook](https://img.shields.io/badge/auto--resume-Windows%20%2F%20pwsh-lightgrey.svg)
 
-> **Zanim zainstalujesz:** statusline działa wszędzie, gdzie jest Node.js. Auto-wznawianie
-> wymaga PowerShell 7 (`pwsh`), więc dziś działa na Windowsie — port na bash to przepisanie
-> jednego skryptu, patrz [Wymagania i ograniczenia](#wymagania-i-ograniczenia).
+> **Before you install:** the statusline runs anywhere Node.js is available. Auto-resume
+> requires PowerShell 7 (`pwsh`), so today it works on Windows — porting it to bash means
+> rewriting a single script, see [Requirements and limitations](#requirements-and-limitations).
 
 ```
-Opus 5 (1M context) | ▸ Cache parsera | ⎇ feature/parser-cache (wt) ↑2 ↓1 🖉 3 +1 | ctx 5% z 1000k | $0.56 | 5h [###-------] 33% (reset 13:40) | 7d [##--------] 21% (reset 07.08)
+Opus 5 (1M context) | ▸ Parser cache | ⎇ feature/parser-cache (wt) ↑2 ↓1 🖉 3 +1 | ctx 5% of 1000k | $0.56 | 5h [###-------] 33% (reset 13:40) | 7d [##--------] 21% (reset 07.08)
 ```
 
-## Co robi
+## What it does
 
-**Statusline** — jeden skrypt Node (~0,25 s), wszystkie segmenty opcjonalne (brak danych = brak segmentu):
+**Statusline** — a single Node script (~0.25 s). Every segment is optional: no data, no segment.
 
-| Segment | Znaczenie |
+| Segment | Meaning |
 |---|---|
 | `Opus 5 (1M context)` | model |
-| `fast` | włączony tryb fast |
-| `▸ nazwa` | nazwa sesji, skracana do 30 znaków — ratuje przy kilku otwartych terminalach |
-| `⎇ branch` | branch; `(wt)` gdy jesteś w worktree, `(wt: nazwa)` gdy nazwa drzewa mówi coś więcej |
-| `↑2` / `↓1` | commity do wypchnięcia / do dociągnięcia |
-| `🖉 3` / `+1` / `!1` | zmodyfikowane / nieśledzone / konflikty |
-| `ctx 5% z 1000k` | zużycie okna kontekstu |
-| `$0.56` | koszt sesji |
-| `5h` / `7d` | limity z paskiem, procentem i godziną resetu |
+| `fast` | fast mode enabled |
+| `▸ name` | session name, truncated to 30 characters — a lifesaver with several terminals open |
+| `⎇ branch` | branch; `(wt)` when you are in a worktree, `(wt: name)` when the tree name adds information |
+| `↑2` / `↓1` | commits to push / to pull |
+| `🖉 3` / `+1` / `!1` | modified / untracked / conflicts |
+| `ctx 5% of 1000k` | context window usage |
+| `$0.56` | session cost |
+| `5h` / `7d` | rate limits with a bar, percentage and reset time |
 
-Kolory progowe: zielony < 60%, żółty od 60%, czerwony od 85% — osobno dla każdego okna.
-Stan gita to jedno wywołanie `git status --porcelain=v2 --branch`; gdy w wielkim repo nie
-wyrobi się w 1,5 s, zostaje sam branch zamiast pustego paska.
+Threshold colours: green below 60%, yellow from 60%, red from 85% — evaluated per window.
+Git state comes from a single `git status --porcelain=v2 --branch` call; if a huge repository
+cannot answer within 1.5 s, you get the branch name alone rather than an empty bar.
 
-**Auto-wznawianie po limicie** — gdy tura padnie z powodu wyczerpanego limitu, hook
-`StopFailure` (matcher `rate_limit`) czeka do resetu i budzi **tę samą sesję** komunikatem
-„kontynuuj przerwaną pracę". Sesja wraca z pełnym kontekstem, w tym samym worktree.
+**Auto-resume after a rate limit** — when a turn fails because your limit is exhausted, a
+`StopFailure` hook (matcher `rate_limit`) waits for the reset and wakes **the same session**
+with a "carry on with the interrupted work" message. The session returns with its full
+context, in the same worktree.
 
-Mechanizm: flaga `asyncRewake` — hook działa w tle nie blokując sesji, a wyjście z **kodem 2**
-budzi model i przekazuje mu stdout hooka jako system-reminder. Skrypt nie uruchamia żadnego
-procesu i nie zmienia uprawnień: czekanie i budzenie robi sam Claude Code.
+How it works: the `asyncRewake` flag lets the hook run in the background without blocking the
+session, and exiting with **code 2** wakes the model, passing the hook's stdout to it as a
+system reminder. The script starts no processes and changes no permissions — the waiting and
+the waking are done by Claude Code itself.
 
-Czas resetu (`resets_at`) Claude Code podaje **tylko** statuslinowi — dlatego statusline
-zapisuje limity do `~/.claude/rate-limits.json`, a hook je odczytuje. Nie ma skąd wziąć tej
-informacji inaczej: payload hooka `StopFailure` zawiera wyłącznie `session_id`, `prompt_id`,
-`transcript_path`, `cwd`, `permission_mode` i `hook_event_name`, CLI nie ma komendy zwracającej
-limity, a `~/.claude.json` trzyma tylko poziom taryfowy (`userRateLimitTier`), bez `resets_at`.
+Claude Code exposes the reset time (`resets_at`) **only** to the statusline, which is why the
+statusline persists limits to `~/.claude/rate-limits.json` for the hook to read. There is no
+other source: the `StopFailure` payload carries only `session_id`, `prompt_id`,
+`transcript_path`, `cwd`, `permission_mode` and `hook_event_name`; the CLI has no command that
+returns limits; and `~/.claude.json` holds just the rate limit tier (`userRateLimitTier`),
+without `resets_at`.
 
-Stąd trzy zachowania hooka:
+Hence three behaviours:
 
-| Stan | Reakcja |
+| State | Reaction |
 |---|---|
-| któreś okno ≥ 90% | czeka do `resets_at` + 60 s, budzi sesję |
-| żadne okno nie wyczerpane | kończy od razu, **nie budzi** |
-| brak pliku limitów | kończy od razu, **nie budzi** — i wpisuje do logu, żeby uruchomić `/cockpit-statusline` |
+| any window ≥ 90% | waits until `resets_at` + 60 s, wakes the session |
+| no window exhausted | exits immediately, **no wake-up** |
+| limits file missing | exits immediately, **no wake-up** — and logs a hint to run `/cockpit-statusline` |
 
-Hook nigdy nie budzi sesji, jeśli nie zna konkretnego czasu resetu. Powód: budzenie „w ciemno"
-niczego nie sprawdza, a każde przebudzenie potrafi wywołać kolejne — czyli pętlę. Czekanie na
-pojawienie się pliku też nie ma sensu: statusline zapisuje go przy **każdym** renderze, więc
-jego brak nie oznacza „jeszcze nie zdążył", tylko „statusline nie jest zainstalowany" — i za
-kwadrans będzie tak samo.
+The hook never wakes a session without knowing a specific reset time. Waking blindly verifies
+nothing, and every wake-up can trigger another one — that is a loop. Waiting for the file to
+appear makes no sense either: the statusline writes it on **every** render, so its absence does
+not mean "not yet", it means "the statusline is not installed" — and fifteen minutes later the
+situation is identical.
 
-## Instalacja
+## Installation
 
 ```
 /plugin marketplace add Eales/claude-code-cockpit
 /plugin install claude-code-cockpit
 ```
 
-Potem raz:
+Then once:
 
 ```
 /cockpit-statusline
 ```
 
-Pluginy nie mogą same ustawiać `statusLine`, więc ta komenda wpisuje go do
-`~/.claude/settings.json` (pytając, jeśli masz już własny) i weryfikuje działanie.
+Plugins cannot set `statusLine` themselves, so this command writes it into
+`~/.claude/settings.json` (asking first if you already have one) and verifies that it works.
 
-Hook auto-wznawiania wczytuje się po **restarcie CLI**.
+The auto-resume hook is loaded **after a CLI restart**.
 
-### Aktualizacja
-
-```
-/plugin marketplace update cockpit    # pobierz najnowszy stan marketplace'u
-/plugin update claude-code-cockpit    # zaktualizuj sam plugin
-```
-
-Statusline aktualizuje się razem z pluginem tylko wtedy, gdy w `~/.claude/settings.json`
-wskazuje na katalog instalacji pluginu. Jeśli podałeś ścieżkę do własnego klona repo
-(wygodne przy rozwijaniu), zmiany widać od razu po `git pull`, bez aktualizacji pluginu.
-
-### Wersje
-
-Wersjonowanie zgodne z [SemVer](https://semver.org/lang/pl/), zmiany opisane w
-[CHANGELOG.md](CHANGELOG.md). Wydania są tagowane w formacie oczekiwanym przez Claude Code:
+### Updating
 
 ```
-claude plugin tag --push        # tworzy tag claude-code-cockpit--v<wersja>
+/plugin marketplace update cockpit    # refresh the marketplace
+/plugin update claude-code-cockpit    # update the plugin itself
 ```
 
-Tag powstaje na podstawie pola `version` z `.claude-plugin/plugin.json`, a polecenie
-sprawdza przy okazji, czy manifest pluginu i wpis w marketplace się zgadzają.
+The statusline updates together with the plugin only if `~/.claude/settings.json` points at the
+plugin's installation directory. If you pointed it at your own clone of this repository —
+convenient while developing — changes take effect straight after `git pull`, with no plugin
+update needed.
 
-## Komendy
+### Versioning
 
-| Komenda | Co robi |
+Versioning follows [SemVer](https://semver.org/); changes are documented in
+[CHANGELOG.md](CHANGELOG.md). Releases are tagged in the format Claude Code expects:
+
+```
+claude plugin tag --push        # creates the tag claude-code-cockpit--v<version>
+```
+
+The tag is derived from the `version` field in `.claude-plugin/plugin.json`, and the command
+also checks that the plugin manifest and the marketplace entry agree.
+
+## Commands
+
+| Command | What it does |
 |---|---|
-| `/cockpit-statusline` | instaluje statusline w ustawieniach użytkownika |
-| `/cockpit-worktree-setup` | konfiguruje bieżące repo pod worktree: `baseRef`, `.worktreeinclude`, oszacowanie kosztu dysku |
+| `/cockpit-statusline` | installs the statusline into your user settings |
+| `/cockpit-worktree-setup` | configures the current repository for worktrees: `baseRef`, `.worktreeinclude`, disk cost estimate |
 
-## Praca na worktree
+## Working with worktrees
 
 ```
-claude --worktree parser-cache       # worktree + branch + sesja
-claude --worktree --tmux raport-csv  # to samo w osobnym oknie tmux
-claude --from-pr 128                 # cudzy PR do review, bez ruszania swojej pracy
-claude -r                            # powrót do wątku (wybór po nazwie sesji)
+claude --worktree parser-cache       # worktree + branch + session
+claude --worktree --tmux csv-report  # the same in a separate tmux window
+claude --from-pr 128                 # review someone's PR without touching your own work
+claude -r                            # back to a thread (pick it by session name)
 ```
 
-Worktree lądują w `.claude/worktrees/<nazwa>`, branch dostaje nazwę `worktree-<nazwa>` —
-pod własną konwencję: `git branch -m feature/parser-cache`.
+Worktrees land in `.claude/worktrees/<name>` and the branch is named `worktree-<name>` — rename
+it to your own convention with `git branch -m feature/parser-cache`.
 
-W dużym repozytorium nowe drzewo zajmuje mniej miejsca, niż wynikałoby z rozmiaru źródeł:
-obiekty `.git` są współdzielone i nie duplikują się. `/cockpit-worktree-setup` szacuje ten
-koszt dla Twojego repo, zanim cokolwiek utworzysz.
+In a large repository a new tree takes less space than the size of the sources suggests: `.git`
+objects are shared rather than duplicated. `/cockpit-worktree-setup` estimates that cost for
+your repository before you create anything.
 
-`/cockpit-worktree-setup` ustawia `"worktree": {"baseRef": "fresh"}` — nowe drzewo odbija się
-od `origin/<default-branch>`, nie od Twojego HEAD-a — oraz `.worktreeinclude` z listą lokalnych
-plików konfiguracyjnych kopiowanych do świeżego drzewa (`.claude/settings.local.json`
-kopiuje się sam).
+`/cockpit-worktree-setup` sets `"worktree": {"baseRef": "fresh"}` — a new tree branches off
+`origin/<default-branch>` instead of your HEAD — and writes `.worktreeinclude` listing the local
+configuration files to copy into a fresh tree (`.claude/settings.local.json` is copied anyway).
 
-## Wymagania i ograniczenia
+## Requirements and limitations
 
-- **Windows + PowerShell 7 (`pwsh`)** — hook jest skryptem `.ps1`. Port na bash: przepisać
-  `scripts/resume-after-rate-limit.ps1`, logika to „policz czas do resetu, poczekaj, `exit 2`".
-- **Node.js w PATH** — dla statuslinu.
-- **Terminal musi zostać otwarty** przy limicie: to ta sama sesja czeka na przebudzenie.
-- **Limit 7-dniowy** — hook odczeka maksymalnie ~6 h (`timeout: 21600`), więc przy 7d
-  obudzi sesję i, jeśli limit wciąż trzyma, cykl się powtórzy.
-- **Uprawnienia zostają normalne** — po przebudzeniu narzędzie wymagające zgody nadal o nią
-  poprosi. Nic nie jest akceptowane bez użytkownika.
-- **Statusline jest wymagany** do auto-wznawiania — bez niego hook nie zna `resets_at` i kończy
-  bez budzenia sesji. Nie jest to opcjonalny dodatek do drugiej funkcji, tylko jej źródło danych.
-- Log hooka: `~/.claude/cockpit-resume.log`.
+- **Windows + PowerShell 7 (`pwsh`)** — the hook is a `.ps1` script. To port it to bash, rewrite
+  `scripts/resume-after-rate-limit.ps1`; the logic is "work out the time until reset, wait,
+  `exit 2`".
+- **Node.js on PATH** — for the statusline.
+- **The terminal must stay open** during a limit: it is that very session waiting to be woken.
+- **The 7-day limit** — the hook waits at most ~6 h (`timeout: 21600`), so with a 7-day window it
+  will wake the session and, if the limit still holds, the cycle repeats.
+- **Permissions stay normal** — after waking, a tool that needs approval will still ask for it.
+  Nothing is auto-approved on your behalf.
+- **The statusline is required** for auto-resume — without it the hook has no `resets_at` and
+  exits without waking anything. It is not an optional companion to the second feature; it is
+  that feature's data source.
+- Hook log: `~/.claude/cockpit-resume.log`.
 
-## Struktura repozytorium
+## Repository layout
 
 ```
 .claude-plugin/
-  plugin.json        # manifest pluginu (nazwa, wersja, metadane)
-  marketplace.json   # wpis marketplace'u - pozwala instalowac wprost z tego repo
-commands/            # komendy /cockpit-*
-hooks/hooks.json     # rejestracja hooka StopFailure (matcher rate_limit, asyncRewake)
+  plugin.json        # plugin manifest (name, version, metadata)
+  marketplace.json   # marketplace entry - allows installing straight from this repo
+commands/            # the /cockpit-* commands
+hooks/hooks.json     # StopFailure hook registration (matcher rate_limit, asyncRewake)
 scripts/
-  statusline.js      # statusline; zapisuje tez ~/.claude/rate-limits.json
-  resume-after-rate-limit.ps1   # hook: czeka do resetu i budzi sesje
+  statusline.js      # the statusline; also writes ~/.claude/rate-limits.json
+  resume-after-rate-limit.ps1   # the hook: waits for the reset and wakes the session
 ```
 
-## Rozwój
+## Development
 
-Zmiany warto sprawdzić przed wysłaniem:
+Worth checking before you submit a change:
 
 ```
-claude plugin validate . --strict     # manifesty
-node scripts/statusline.js            # podaj na stdin przykladowy JSON sesji
+claude plugin validate . --strict     # manifests
+node scripts/statusline.js            # feed it a sample session JSON on stdin
 ```
 
-Skrypt hooka da się przetestować bez czekania na prawdziwy limit — przyjmuje ścieżki
-i progi jako parametry:
+The hook script can be exercised without waiting for a real limit — paths and thresholds are
+parameters:
 
 ```
 '{"session_id":"test"}' | pwsh -File scripts/resume-after-rate-limit.ps1 `
-  -RateLimitsFile ./przyklad.json -MaxSleepSeconds 5
+  -RateLimitsFile ./sample.json -MaxSleepSeconds 5
 ```
 
-Uwagi i błędy: [Issues](https://github.com/Eales/claude-code-cockpit/issues).
+Feedback and bugs: [Issues](https://github.com/Eales/claude-code-cockpit/issues).
 
-## Licencja
+## License
 
-MIT — patrz [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
 
-## Status weryfikacji
+## Verification status
 
-Sprawdzone realnie: wszystkie trzy ścieżki skryptu hooka (okno wyczerpane → czeka do resetu
-i wychodzi z kodem 2; limity znane i niewyczerpane → wychodzi natychmiast bez budzenia; brak
-pliku limitów → to samo, plus wskazówka w logu), statusline na prawdziwym repo i w worktree,
-`baseRef: fresh` (nowy branch odbił się od domyślnej gałęzi zdalnej, nie od lokalnego HEAD-a),
-kopiowanie plików z `.worktreeinclude`.
+Verified in practice: all three paths of the hook script (window exhausted → waits for the reset
+and exits with code 2; limits known and not exhausted → exits immediately without waking; limits
+file missing → the same, plus a hint in the log), the statusline on a real repository and inside
+a worktree, `baseRef: fresh` (the new branch started from the default remote branch rather than
+the local HEAD), and copying files listed in `.worktreeinclude`.
 
-**Sprawdzone na prawdziwym limicie (4.08.2026).** Hook dostał sygnał `rate_limit`, odczekał
-i obudził sesję — mechanizm `asyncRewake` + `exit 2` działa: model dostał stdout hooka jako
-system-reminder i wrócił do przerwanej pracy z pełnym kontekstem.
+**Verified against a real rate limit (2026-08-04).** The hook received the `rate_limit` signal,
+waited, and woke the session — `asyncRewake` plus `exit 2` does work: the model received the
+hook's stdout as a system reminder and returned to the interrupted work with full context.
 
-Ten sam test ujawnił pętlę: statusline nie był wtedy zainstalowany, więc hook nie znał
-`resets_at` i budził sesję co 15 min bez końca (`~/.claude/cockpit-resume.log`, 18:54 → 21:58,
-pięć przebudzeń). Stąd zasada, że hook budzi sesję **wyłącznie** wtedy, gdy zna konkretny
-czas resetu, a w każdym innym przypadku kończy się natychmiast.
+That same test exposed a loop: the statusline was not installed at the time, so the hook did not
+know `resets_at` and kept waking the session every 15 minutes indefinitely (five wake-ups over
+three hours in `~/.claude/cockpit-resume.log`). Hence the rule that the hook wakes a session
+**only** when it knows a specific reset time, and exits immediately in every other case.
 
-Dwa zastrzeżenia, o których warto wiedzieć:
+Two caveats worth knowing:
 
-- Dokumentacja hooków opisuje `StopFailure` jako zdarzenie obserwacyjne („output and exit code
-  are ignored"), a obserwowane zachowanie jest inne — `exit 2` faktycznie budzi sesję. Plugin
-  opiera się więc na zachowaniu, które nie jest w tej formie udokumentowane i może się zmienić.
-- Skrypt ma zabezpieczenie na pole `error` w payloadzie, ale udokumentowany payload `StopFailure`
-  takiego pola nie zawiera — o tym, że chodzi o limit, decyduje wyłącznie `matcher` w `hooks.json`.
+- The hooks documentation describes `StopFailure` as an observational event ("output and exit
+  code are ignored"), yet the observed behaviour differs — `exit 2` does wake the session. The
+  plugin therefore relies on behaviour that is not documented in this form and may change.
+- The script guards against an `error` field in the payload, but the documented `StopFailure`
+  payload contains no such field — whether this is a rate limit is decided solely by the
+  `matcher` in `hooks.json`.

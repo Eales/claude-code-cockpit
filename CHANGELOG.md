@@ -39,4 +39,3 @@ wersjonowanie zgodne z [SemVer](https://semver.org/lang/pl/).
 - Komendy `/cockpit-statusline` i `/cockpit-worktree-setup`.
 
 [0.2.0]: https://github.com/Eales/claude-code-cockpit/releases/tag/claude-code-cockpit--v0.2.0
-[0.1.0]: https://github.com/Eales/claude-code-cockpit/releases/tag/claude-code-cockpit--v0.1.0
