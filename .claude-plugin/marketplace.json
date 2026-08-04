@@ -1,0 +1,15 @@
+{
+  "name": "cockpit",
+  "description": "Marketplace jednego pluginu: Claude Code Cockpit - statusline z limitami i stanem gita oraz auto-wznawianie sesji po limicie.",
+  "owner": {
+    "name": "Artur Zegarek",
+    "url": "https://github.com/Eales"
+  },
+  "plugins": [
+    {
+      "name": "claude-code-cockpit",
+      "source": "./",
+      "description": "Statusline z limitami 5h/7d, stanem gita i worktree + auto-wznawianie sesji po resecie limitu."
+    }
+  ]
+}

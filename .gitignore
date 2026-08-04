@@ -1,0 +1,11 @@
+# Lokalne uprawnienia sesji - u kazdego inne, nie naleza do repo.
+# (U autora ignoruje je globalny ~/.config/git/ignore, ale po sklonowaniu
+# tamta regula nie obowiazuje.)
+.claude/settings.local.json
+
+# Worktree tworzone przez `claude --worktree`
+.claude/worktrees/
+
+# Smieci systemowe
+Thumbs.db
+.DS_Store

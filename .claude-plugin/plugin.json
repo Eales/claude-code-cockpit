@@ -1,0 +1,20 @@
+{
+  "name": "claude-code-cockpit",
+  "displayName": "Claude Code Cockpit",
+  "description": "Czytelny statusline z limitami 5h/7d i stanem gita oraz auto-wznawianie sesji po odnowieniu limitu.",
+  "version": "0.2.0",
+  "author": {
+    "name": "Artur Zegarek",
+    "url": "https://github.com/Eales"
+  },
+  "homepage": "https://github.com/Eales/claude-code-cockpit",
+  "repository": "https://github.com/Eales/claude-code-cockpit",
+  "license": "MIT",
+  "keywords": [
+    "statusline",
+    "rate-limits",
+    "git",
+    "worktree",
+    "session-resume"
+  ]
+}
